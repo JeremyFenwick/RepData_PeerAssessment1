@@ -1,25 +1,173 @@
----
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
----
+Reproducible Research Assignment One
+====================================
 
+## Introduction
 
-## Loading and preprocessing the data
+This document shows the analysis & results of personal activity monitoring device data.
 
+**Four questions will be answered:**
 
+1. What are the mean steps taken each day?
+2. What is the average daily acitivty pattern?
+3. How do the results to the above two questions change when missing data is imputed?
+4. Do activity patterns change between weekends & weekdays?
 
-## What is mean total number of steps taken per day?
+### Setup
 
+First, we clear the global environment
 
+```{r}
+rm(list = ls())
+```
 
-## What is the average daily activity pattern?
+The following packages will be loaded. If they are not available, an error is produced.
 
+```{r, message=FALSE, warning=TRUE}
+require(ggplot2)
+require(dplyr)
+require(plyr)
+require(data.table)
+require(lattice)
+require(gridExtra)
+```
 
+Now we load the required data. If it cannot be found in the current working directory, it will be downloaded.
 
-## Imputing missing values
+```{r}
+if( !file.exists("activity.csv") ) {
+  download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip",            
+                destfile = "activity.zip", method = "curl")
+  unzip("activity.zip")
+} else {
+  print("Data exists!")
+}
+```
 
+Load the data file into a data frame. Print the head.
 
+```{r}
+dat <- read.csv("activity.csv")
+head(dat)
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+### Question 1. What are the mean steps taken each day?
+
+Create a data frame of the sum of column steps by date using the plyr package.
+
+```{r}
+data <- ddply(dat, .(date), summarise, steps = sum(steps, na.rm=TRUE))
+head(data)
+```
+
+Create a histogram using ggplot2.
+
+```{r, message=FALSE, warning=FALSE}
+qplot(data$steps,
+      xlab = "Steps",
+      ylab = "Frequency",
+      geom = "histogram")
+```
+
+Print the mean & median of the number of steps taken, per day.
+
+```{r}
+summary(data$steps)
+```
+
+### Question 2. What is the average daily acitivty pattern?
+
+Create a data frame of the mean of column steps by interval using the plyr package.
+
+```{r}
+data <- ddply(dat, .(interval), summarise, steps = mean(steps, na.rm=TRUE))
+head(data)
+```
+
+Create a line graph using ggplot2.
+
+```{r, message=FALSE, warning=FALSE}
+qplot(data$interval, data$steps,
+      xlab = "Interval",
+      ylab = "Steps",
+      geom = "Line")
+```
+
+Interval **835** averages the most number of steps taken.
+
+### Question 3. How do the results to the above two questions change when missing data is imputed?
+
+Create a new data frame with the average time of each interval.
+
+```{r}
+avg <- aggregate(. ~ interval, dat, FUN = mean, na.rm=TRUE)
+```
+
+Merge the new data frame with the interval averages with the complete data frame.
+
+```{r}
+joindat <- join(dat, avg, by = "interval", type="left", match="all")
+joindat[[5]] <- NULL
+colnames(joindat)[4] <- "avgsteps"
+```
+
+Replace NA values with imputed average step values
+```{r}
+joindat$steps[is.na(joindat$steps)] <- joindat$avgsteps[is.na(joindat$steps)]
+joindat[[4]] <- NULL
+```
+
+Create a summary data frame of averages.
+
+```{r}
+data <- ddply(joindat, .(date), summarise, steps = sum(steps))
+head(data)
+```
+
+Create a histogram using ggplot2. Notice that the most frequent number of steps taken changes dramatically from 0 in Question 1. to the ~mean (10,770) here.
+
+```{r, message=FALSE, warning=FALSE}
+qplot(data$steps,
+      xlab = "Steps",
+      ylab = "Frequency",
+      geom = "histogram")
+```
+
+Print the mean & median of the number of steps taken, per day.
+
+```{r}
+summary(data$steps)
+```
+
+### Question 4. Do activity patterns change between weekends & weekdays?
+
+Format the date column. Add a new column with the day of week. Replace weekdays with "weekday" & weekends with "weekend"
+
+```{r}
+dat$date <- as.Date(dat$date, "%Y-%m-%d") 
+dat$day <- weekdays(dat$date)
+dat$day <- gsub("Monday", "weekday", dat$day)
+dat$day <- gsub("Tuesday", "weekday", dat$day)
+dat$day <- gsub("Wednesday", "weekday", dat$day)
+dat$day <- gsub("Thursday", "weekday", dat$day)
+dat$day <- gsub("Friday", "weekday", dat$day)
+dat$day <- gsub("Saturday", "weekend", dat$day)
+dat$day <- gsub("Sunday", "weekend", dat$day)
+```
+
+Create two new data frames, with averages of weekend & weekday data. Then create summary tables of the two data frames.
+
+```{r}
+weekday <- dat[dat$day == "weekday",]
+weekend <- dat[dat$day == "weekend",]
+weekdaysum <- ddply(weekday, .(interval), summarise, steps = mean(steps, na.rm=TRUE))
+weekendsum <- ddply(weekend, .(interval), summarise, steps = mean(steps, na.rm=TRUE))
+```
+
+Use the lattice system to create two graphs.
+
+```{r}
+par(mfrow=c(1,2))
+p1 <- xyplot(weekdaysum$steps ~ weekdaysum$interval, type="l", main="Weekday",xlab="",ylab="")
+p2 <- xyplot(weekendsum$steps ~ weekendsum$interval, type="l",main="Weekend",xlab="",ylab="")
+grid.arrange(p1,p2,ncol=1)
+```
